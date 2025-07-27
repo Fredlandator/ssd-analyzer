@@ -403,9 +403,6 @@ void SSDAnalyzer::WorkerThread()
                     U8 carNumber = mCarCount + 1;
                     PostFrame(nFrameStart, nCurSample, FRAME_CARDATA, 0, nVal, carNumber);
 
-                    nTemp = nCurSample;
-                    UINT nLABit = LookaheadNextHBit(&nTemp);
-
                     // Determine if this is the last data byte or if more follow
                     bool isLastByte = false;
 
@@ -425,24 +422,45 @@ void SSDAnalyzer::WorkerThread()
                     // Incrémenter le compteur de voitures APRÈS l'avoir utilisé
                     mCarCount++;
 
+                    // CORRECTION PRINCIPALE: Toujours passer par un état DSBIT
+                    // car il y a TOUJOURS un bit start avant le prochain byte (données ou checksum)
+                    ReportProgress(nCurSample);
+                    nFrameStart = nCurSample + 1;
+                    nBits = nVal = 0;
+
                     if (isLastByte) {
-                        // C'était le dernier byte de données, le prochain devrait être le checksum
-                        ef = FSTATE_CHECKSUM;
+                        // Prochain byte sera le checksum, mais il faut d'abord lire son bit start
+                        ef = FSTATE_DSBIT_CHECKSUM;  // Nouvel état pour différencier
                     }
                     else {
                         // Plus de bytes de données à suivre
                         ef = FSTATE_DSBIT;
                     }
-
-                    ReportProgress(nCurSample);
-                    nFrameStart = nCurSample + 1;
-                    nBits = nVal = 0;
                 }
                 break;
             default:
                 PostFrame(nBitStartSample, nCurSample, FRAME_ERR, nHBitVal, 0, 0);
                 mResults->AddMarker(nBitStartSample, AnalyzerResults::ErrorSquare, mSettings->mInputChannel);
                 mResults->AddMarker(nCurSample, AnalyzerResults::ErrorX, mSettings->mInputChannel);
+                ReportProgress(nCurSample);
+                nHBitCnt = 0;
+                ef = FSTATE_INIT;
+            }
+            break;
+
+        case FSTATE_DSBIT_CHECKSUM:
+            nHBitVal = GetNextBit(&nCurSample);
+            if (nHBitVal == 0) { // Data start bit avant checksum
+                PostFrame(nFrameStart, nCurSample, FRAME_DSBIT, 0, 0, 0);
+                mResults->AddMarker(nFrameStart, AnalyzerResults::Start, mSettings->mInputChannel);
+                ReportProgress(nCurSample);
+                nBits = nVal = 0;
+                nFrameStart = nCurSample + 1;
+                ef = FSTATE_CHECKSUM;  // Maintenant on peut lire le checksum
+            }
+            else {
+                PostFrame(nBitStartSample, nCurSample, FRAME_ERR, FRAMING_ERROR_FLAG, 0, 0);
+                mResults->AddMarker(nBitStartSample, AnalyzerResults::ErrorDot, mSettings->mInputChannel);
                 ReportProgress(nCurSample);
                 nHBitCnt = 0;
                 ef = FSTATE_INIT;
@@ -486,28 +504,49 @@ void SSDAnalyzer::WorkerThread()
             break;
 
         case FSTATE_PEBIT:
-            // In SSD, after checksum we should see the packet gap (high level hold)
+        {
+            // Bloc pour isoler la portée de la variable lookahead
+            // Après le checksum, chercher le gap entre paquets ou le début du prochain
             nTemp = nCurSample;
-            if (LookaheadNextHBit(&nTemp) == 3) { // Packet gap detected
+            UINT lookahead = LookaheadNextHBit(&nTemp);
+
+            if (lookahead == 3) {
+                // Packet gap détecté - fin normale de paquet
                 PostFrame(nFrameStart, nCurSample, FRAME_PEBIT, 0, 0, 0);
                 mResults->AddMarker(nFrameStart, AnalyzerResults::Stop, mSettings->mInputChannel);
                 ReportProgress(nCurSample);
+
+                // Avancer jusqu'à la fin du gap
+                while (LookaheadNextHBit(&nCurSample) == 3) {
+                    GetNextHBit(&nCurSample);
+                }
+
                 nFrameStart = nCurSample + 1;
                 nPreambleStart = nFrameStart;
                 nHBitCnt = 0;
+                ef = FSTATE_INIT;
+            }
+            else if (lookahead == 1) {
+                // Début immédiat du prochain paquet (preamble)
+                PostFrame(nFrameStart, nCurSample, FRAME_PEBIT, 0, 0, 0);
+                mResults->AddMarker(nFrameStart, AnalyzerResults::Stop, mSettings->mInputChannel);
+                ReportProgress(nCurSample);
+
+                nFrameStart = nCurSample + 1;
+                nPreambleStart = nFrameStart;
+                nHBitCnt = 1; // On a déjà vu le premier bit '1' du préambule
                 ef = FSTATE_INIT;
             }
             else {
-                // Immediate transition to next packet (or error)
-                PostFrame(nFrameStart, nCurSample, FRAME_PEBIT, 0, 0, 0);
-                mResults->AddMarker(nFrameStart, AnalyzerResults::Stop, mSettings->mInputChannel);
+                // Erreur ou bit inattendu
+                PostFrame(nFrameStart, nCurSample, FRAME_ERR, BIT_ERROR_FLAG, 0, 0);
+                mResults->AddMarker(nFrameStart, AnalyzerResults::ErrorX, mSettings->mInputChannel);
                 ReportProgress(nCurSample);
-                nFrameStart = nCurSample + 1;
-                nPreambleStart = nFrameStart;
                 nHBitCnt = 0;
                 ef = FSTATE_INIT;
             }
-            break;
+        }
+        break;
 
         default:
             nHBitCnt = 0;
