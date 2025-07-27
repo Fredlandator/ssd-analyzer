@@ -9,7 +9,7 @@ SSDSimulationDataGenerator::~SSDSimulationDataGenerator()
 {
 }
 
-void SSDSimulationDataGenerator::Initialize(U32 simulation_sample_rate, SSDAnalyzerSettings *settings)
+void SSDSimulationDataGenerator::Initialize(U32 simulation_sample_rate, SSDAnalyzerSettings* settings)
 {
     mSimulationSampleRateHz = simulation_sample_rate;
     mSettings = settings;
@@ -20,9 +20,9 @@ void SSDSimulationDataGenerator::Initialize(U32 simulation_sample_rate, SSDAnaly
 
     mBitLow = BIT_LOW;
     mBitHigh = BIT_HIGH;
-    mHBit1Samples = HB_1 * simulation_sample_rate / 1000000.0;
-    mHBit0Samples = HB_0 * simulation_sample_rate / 1000000.0;
-    mIdleSamples = 1000.0 * simulation_sample_rate / 1000000.0; // 1ms idle between packets
+    mHBit1Samples = (U64)(HB_1 * simulation_sample_rate / 1000000.0);
+    mHBit0Samples = (U64)(HB_0 * simulation_sample_rate / 1000000.0);
+    mIdleSamples = (U64)(1000.0 * simulation_sample_rate / 1000000.0); // 1ms idle between packets
 
     mSSDSimulationData.SetInitialBitState(mBitHigh);
     mSSDSimulationData.Advance(10 * mHBit1Samples);  // Insert initial idle time
@@ -30,27 +30,27 @@ void SSDSimulationDataGenerator::Initialize(U32 simulation_sample_rate, SSDAnaly
     mValue = 0;
 }
 
-U32 SSDSimulationDataGenerator::GenerateSimulationData(U64 largest_sample_requested, U32 sample_rate, 
-        SimulationChannelDescriptor **simulation_channels)
+U32 SSDSimulationDataGenerator::GenerateSimulationData(U64 largest_sample_requested, U32 sample_rate,
+    SimulationChannelDescriptor** simulation_channels)
 {
-    U64 adjusted_largest_sample_requested = 
+    U64 adjusted_largest_sample_requested =
         AnalyzerHelpers::AdjustSimulationTargetSample(largest_sample_requested, sample_rate, mSimulationSampleRateHz);
 
     while (mSSDSimulationData.GetCurrentSampleNumber() < adjusted_largest_sample_requested) {
         // Generate a RACE packet with sample car data
         CreateSSDRacePacket();
         CreateIdleTime();
-        
+
         // Generate a PROGRAM packet for car ID 3
         CreateSSDProgramPacket(3);
         CreateSSDProgramPacket(3); // Program packets are sent twice
         CreateIdleTime();
-        
+
         // Generate another RACE packet with different data
         CreateSSDRacePacket();
         CreateIdleTime();
     }
-        
+
     *simulation_channels = &mSSDSimulationData;
     return 1;
 }
@@ -58,10 +58,10 @@ U32 SSDSimulationDataGenerator::GenerateSimulationData(U64 largest_sample_reques
 void SSDSimulationDataGenerator::CreateSSDPreamble(U32 nBits)
 {
     // Generate preamble: all 1 bits
-    for (UINT i = 0; i < (nBits * 2); i++)
+    for (U32 i = 0; i < (nBits * 2); i++)
     {
         mSSDSimulationData.Transition();  // flip bit
-        mSSDSimulationData.Advance(mHBit1Samples);    // add half-bit time
+        mSSDSimulationData.Advance((U32)mHBit1Samples);    // add half-bit time
     }
 }
 
@@ -69,9 +69,9 @@ void SSDSimulationDataGenerator::GenerateByte(U8 nVal)
 {
     // Start bit (0)
     mSSDSimulationData.Transition();  // flip bit
-    mSSDSimulationData.Advance(mHBit0Samples);    // add half-bit time
+    mSSDSimulationData.Advance((U32)mHBit0Samples);    // add half-bit time
     mSSDSimulationData.Transition();  // flip bit
-    mSSDSimulationData.Advance(mHBit0Samples);    // add half-bit time
+    mSSDSimulationData.Advance((U32)mHBit0Samples);    // add half-bit time
 
     // Data bits (MSB first)
     for (int i = 0; i < 8; i++)
@@ -80,17 +80,17 @@ void SSDSimulationDataGenerator::GenerateByte(U8 nVal)
         {
             // Bit 1
             mSSDSimulationData.Transition();  // flip bit
-            mSSDSimulationData.Advance(mHBit1Samples);    // add half-bit time
+            mSSDSimulationData.Advance((U32)mHBit1Samples);    // add half-bit time
             mSSDSimulationData.Transition();  // flip bit
-            mSSDSimulationData.Advance(mHBit1Samples);    // add half-bit time
-        } 
-        else    
+            mSSDSimulationData.Advance((U32)mHBit1Samples);    // add half-bit time
+        }
+        else
         {
             // Bit 0
             mSSDSimulationData.Transition();  // flip bit
-            mSSDSimulationData.Advance(mHBit0Samples);    // add half-bit time
+            mSSDSimulationData.Advance((U32)mHBit0Samples);    // add half-bit time
             mSSDSimulationData.Transition();  // flip bit
-            mSSDSimulationData.Advance(mHBit0Samples);    // add half-bit time
+            mSSDSimulationData.Advance((U32)mHBit0Samples);    // add half-bit time
         }
         nVal <<= 1;
     }
@@ -98,6 +98,8 @@ void SSDSimulationDataGenerator::GenerateByte(U8 nVal)
 
 U8 SSDSimulationDataGenerator::CalculateChecksum(U8* data, int count)
 {
+    // CORRECTION IMPORTANTE : Calculer le checksum SEULEMENT sur les données voitures
+    // NE PAS inclure la commande dans le calcul du checksum selon la spécification SSD
     U8 checksum = 0;
     for (int i = 0; i < count; i++) {
         checksum ^= data[i];
@@ -116,19 +118,19 @@ void SSDSimulationDataGenerator::CreateSSDRacePacket()
         0x00,  // Car 5: No brake, no lane change, speed 0
         0x20   // Car 6: No brake, no lane change, speed 32
     };
-    
+
     // Generate preamble
     CreateSSDPreamble(SSD_PREAMBLE_BITS);
-    
+
     // Generate command byte (RACE = 0x02)
     GenerateByte(CMD_RACE);
-    
+
     // Generate car data
     for (int i = 0; i < 6; i++) {
         GenerateByte(carData[i]);
     }
-    
-    // Generate checksum
+
+    // Generate checksum - CORRECTION : seulement sur les données voitures, pas la commande
     U8 checksum = CalculateChecksum(carData, 6);
     GenerateByte(checksum);
 }
@@ -136,20 +138,20 @@ void SSDSimulationDataGenerator::CreateSSDRacePacket()
 void SSDSimulationDataGenerator::CreateSSDProgramPacket(U8 carId)
 {
     // Program packet data (4 identical bytes)
-    U8 progData[4] = {carId, carId, carId, carId};
-    
+    U8 progData[4] = { carId, carId, carId, carId };
+
     // Generate preamble
     CreateSSDPreamble(SSD_PREAMBLE_BITS);
-    
+
     // Generate command byte (PROGRAM = 0x01)
     GenerateByte(CMD_PROGRAM);
-    
+
     // Generate 4 identical car ID bytes
     for (int i = 0; i < 4; i++) {
         GenerateByte(progData[i]);
     }
-    
-    // Generate checksum
+
+    // Generate checksum - CORRECTION : seulement sur les données, pas la commande
     U8 checksum = CalculateChecksum(progData, 4);
     GenerateByte(checksum);
 }
@@ -157,5 +159,5 @@ void SSDSimulationDataGenerator::CreateSSDProgramPacket(U8 carId)
 void SSDSimulationDataGenerator::CreateIdleTime()
 {
     // Create idle time between packets (high level)
-    mSSDSimulationData.Advance(mIdleSamples);
+    mSSDSimulationData.Advance((U32)mIdleSamples);
 }

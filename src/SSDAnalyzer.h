@@ -31,27 +31,28 @@ public:
     virtual void SetupResults();
     virtual void WorkerThread();
 
-    virtual U32 GenerateSimulationData(U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor **simulation_channels);
+    virtual U32 GenerateSimulationData(U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor** simulation_channels);
     virtual U32 GetMinimumSampleRateHz();
 
-    virtual const char *GetAnalyzerName() const;
+    virtual const char* GetAnalyzerName() const;
     virtual bool NeedsRerun();
 
 #pragma warning( push )
 #pragma warning( disable : 4251 )
 
 protected: // functions
-    UINT LookaheadNextHBit(U64 *nSample);
-    UINT GetNextHBit(U64 *nSample);
-    UINT GetNextBit(U64 *nSample);
+    UINT LookaheadNextHBit(U64* nSample);
+    UINT GetNextHBit(U64* nSample);
+    UINT GetNextBit(U64* nSample);
     void PostFrame(U64 nStartSample, U64 nEndSample, eFrameType ft, U8 Flags, U64 Data1, U64 Data2);
     void Setup();
     void DecodeCarData(U8 carData, char* buffer, int bufferSize);
+    const char* GetCurrentPacketColor();  // Nouvelle fonction pour les couleurs cohérentes
 
 protected: // vars
     std::unique_ptr< SSDAnalyzerSettings > mSettings;
     std::unique_ptr< SSDAnalyzerResults > mResults;
-    AnalyzerChannelData *mSSD;
+    AnalyzerChannelData* mSSD;
 
     SSDSimulationDataGenerator mSimulationDataGenerator;
     bool mSimulationInitilized;
@@ -78,8 +79,8 @@ protected: // vars
 #pragma warning( pop )
 };
 
-extern "C" ANALYZER_EXPORT const char *__cdecl GetAnalyzerName();
-extern "C" ANALYZER_EXPORT Analyzer *__cdecl CreateAnalyzer();
-extern "C" ANALYZER_EXPORT void __cdecl DestroyAnalyzer(Analyzer *analyzer);
+extern "C" ANALYZER_EXPORT const char* __cdecl GetAnalyzerName();
+extern "C" ANALYZER_EXPORT Analyzer* __cdecl CreateAnalyzer();
+extern "C" ANALYZER_EXPORT void __cdecl DestroyAnalyzer(Analyzer* analyzer);
 
 #endif //SSD_ANALYZER_H
