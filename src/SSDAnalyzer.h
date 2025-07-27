@@ -17,7 +17,7 @@ enum eFrameState {
     FSTATE_PSBIT,
     FSTATE_CMDBYTE,
     FSTATE_DSBIT,
-    FSTATE_DSBIT_CHECKSUM,  // NOUVEAU: bit start avant checksum
+    FSTATE_DSBIT_CHECKSUM,  // Bit start avant checksum
     FSTATE_DATABYTE,
     FSTATE_CHECKSUM,
     FSTATE_PEBIT
@@ -63,11 +63,11 @@ protected: //vars
     UINT mMaxBitLen;              // Maximum bit length
     UINT mMinPEHold, mMaxPGap;    // Packet end hold and gap timing
 
-    // SSD protocol state
+    // SSD protocol state - RACE et PROGRAM ont tous les deux 6 bytes de donnees
     U8 mCurrentMode;              // Current packet mode (RACE/PROGRAM)
-    U8 mCarCount;                 // Current car being processed
-    U8 mCalculatedChecksum;       // Calculated checksum
-    U8 mCarData[6];              // Car data storage
+    U8 mCarCount;                 // Current car being processed (0-5 pour 6 bytes)
+    U8 mCalculatedChecksum;       // Calculated checksum (starts at 0xFF)
+    U8 mCarData[6];              // Car data storage (6 bytes pour RACE et PROGRAM)
 };
 
 extern "C" ANALYZER_EXPORT const char* GetAnalyzerName();

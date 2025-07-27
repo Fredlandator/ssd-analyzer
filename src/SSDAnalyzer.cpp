@@ -71,7 +71,7 @@ UINT SSDAnalyzer::GetNextBit(U64* nSample)
 
 const char* SSDAnalyzer::GetCurrentPacketColor()
 {
-    // Retourne la couleur appropriée selon le mode du paquet actuel
+    // Retourne la couleur appropriee selon le mode du paquet actuel
     switch (mCurrentMode) {
     case SSD_MODE_RACE:
         return "ssd_race";      // VERT
@@ -101,7 +101,7 @@ void SSDAnalyzer::PostFrame(U64 nStartSample, U64 nEndSample, eFrameType ft, U8 
     case FRAME_PREAMBLE:
         framev2.AddString("type", "preamble");
         framev2.AddByte("length", (U8)Data1);
-        // Couleur neutre pour le préambule
+        // Couleur neutre pour le preambule
         mResults->AddFrameV2(framev2, "ssd_preamble", nStartSample, nEndSample);
         break;
 
@@ -152,7 +152,7 @@ void SSDAnalyzer::PostFrame(U64 nStartSample, U64 nEndSample, eFrameType ft, U8 
         framev2.AddByte("lane_change", lane_change ? 1 : 0);
         framev2.AddByte("speed_power", speed_power);
 
-        // Utiliser la couleur du paquet actuel (cohérence)
+        // Utiliser la couleur du paquet actuel (coherence)
         mResults->AddFrameV2(framev2, GetCurrentPacketColor(), nStartSample, nEndSample);
     }
     break;
@@ -199,22 +199,22 @@ void SSDAnalyzer::Setup()
     double dMinCorrection = 1.0 - (double)mSettings->mCalPPM / 1000000.0;
 
     // SSD Protocol timing - TOLERANCES ELARGIES
-    // Bit 1: 57μs à 63μs par demi-bit (période complète: 114μs à 126μs)
-    // Bit 0: 106μs à 125μs par demi-bit (période complète: 212μs à 250μs)
+    // Bit 1: 57μs a 63μs par demi-bit (periode complete: 114μs a 126μs)
+    // Bit 0: 106μs a 125μs par demi-bit (periode complete: 212μs a 250μs)
 
     mMaxBitLen = (UINT)round(500.0 * dSamplesPerMicrosecond * dMaxCorrection);  // Maximum bit length
     mMinPEHold = (UINT)round(26.0 * dSamplesPerMicrosecond * dMinCorrection);
     mMaxPGap = (UINT)round(30000.0 * dSamplesPerMicrosecond * dMaxCorrection);
 
     if (mSettings->mMode == SSDAnalyzerEnums::MODE_TOLERANT) {
-        // Mode tolérant : plages encore plus larges
+        // Mode tolerant : plages encore plus larges
         mMin1hbit = (UINT)round(55.0 * dSamplesPerMicrosecond * dMinCorrection);  // 57μs - 2μs marge
         mMax1hbit = (UINT)round(65.0 * dSamplesPerMicrosecond * dMaxCorrection);  // 63μs + 2μs marge
         mMin0hbit = (UINT)round(104.0 * dSamplesPerMicrosecond * dMinCorrection); // 106μs - 2μs marge
         mMax0hbit = (UINT)round(127.0 * dSamplesPerMicrosecond * dMaxCorrection); // 125μs + 2μs marge
     }
     else {
-        // Mode standard : tolérances demandées
+        // Mode standard : tolerances demandees
         mMin1hbit = (UINT)round(57.0 * dSamplesPerMicrosecond * dMinCorrection);  // 57μs minimum
         mMax1hbit = (UINT)round(63.0 * dSamplesPerMicrosecond * dMaxCorrection);  // 63μs maximum
         mMin0hbit = (UINT)round(106.0 * dSamplesPerMicrosecond * dMinCorrection); // 106μs minimum
@@ -315,7 +315,8 @@ void SSDAnalyzer::WorkerThread()
                 mResults->AddMarker(nFrameStart, AnalyzerResults::Start, mSettings->mInputChannel);
                 ReportProgress(nCurSample);
                 nBits = nVal = 0;
-                mCalculatedChecksum = 0;  // Reset checksum - NE PAS inclure la commande
+                // CORRECTION CHECKSUM: Initialiser a 0xFF selon le protocole SSD reel
+                mCalculatedChecksum = 0xFF;
                 nFrameStart = nCurSample + 1;
                 ef = FSTATE_CMDBYTE;
             }
@@ -338,12 +339,11 @@ void SSDAnalyzer::WorkerThread()
                 nBits++;
                 if (nBits == 8)
                 {
-                    mCurrentMode = nVal;  // Définir le mode pour tout le paquet
+                    mCurrentMode = nVal;  // Definir le mode pour tout le paquet
                     mCarCount = 0;  // Reset car count for new packet
 
-                    // CORRECTION IMPORTANTE : NE PAS inclure la commande dans le checksum
-                    // Le checksum SSD = XOR des données voitures SEULEMENT
-                    // mCalculatedChecksum reste à 0 (déjà initialisé)
+                    // CORRECTION CHECKSUM CRITIQUE: Inclure la commande dans le checksum
+                    mCalculatedChecksum ^= nVal;
 
                     PostFrame(nFrameStart, nCurSample, FRAME_CMDBYTE, 0, nVal, 0);
                     ReportProgress(nCurSample);
@@ -392,18 +392,18 @@ void SSDAnalyzer::WorkerThread()
                 if (nBits == 8)
                 {
                     // Store the car data byte
-                    if (mCarCount < 6) {  // Protection contre débordement
+                    if (mCarCount < 6) {  // Protection contre debordement
                         mCarData[mCarCount] = nVal;
                     }
 
-                    // CORRECTION : Ajouter SEULEMENT les données voitures au checksum
+                    // Continuer a XOR avec les donnees voitures
                     mCalculatedChecksum ^= nVal;
 
-                    // Afficher les données avec le numéro de voiture correct (1-6)
+                    // Afficher les donnees avec le numero de voiture correct (1-6)
                     U8 carNumber = mCarCount + 1;
                     PostFrame(nFrameStart, nCurSample, FRAME_CARDATA, 0, nVal, carNumber);
 
-                    // Determine if this is the last data byte or if more follow
+                    // CORRECTION IMPORTANTE: Les deux modes (RACE et PROGRAM) ont 6 bytes de donnees
                     bool isLastByte = false;
 
                     if (mCurrentMode == SSD_MODE_RACE) {
@@ -411,29 +411,29 @@ void SSDAnalyzer::WorkerThread()
                         isLastByte = (mCarCount >= 5);
                     }
                     else if (mCurrentMode == SSD_MODE_PROGRAM) {
-                        // En mode PROGRAM, on attend exactement 4 bytes (mCarCount 0-3)
-                        isLastByte = (mCarCount >= 3);
+                        // CORRECTION: En mode PROGRAM, on attend exactement 6 bytes (mCarCount 0-5)
+                        isLastByte = (mCarCount >= 5);  // ETAIT 3, MAINTENANT 5
                     }
                     else {
-                        // Mode inconnu - supposer que c'est le checksum après ce byte
+                        // Mode inconnu - supposer que c'est le checksum apres ce byte
                         isLastByte = true;
                     }
 
-                    // Incrémenter le compteur de voitures APRÈS l'avoir utilisé
+                    // Incrementer le compteur de voitures APRES l'avoir utilise
                     mCarCount++;
 
-                    // CORRECTION PRINCIPALE: Toujours passer par un état DSBIT
-                    // car il y a TOUJOURS un bit start avant le prochain byte (données ou checksum)
+                    // CORRECTION PRINCIPALE: Toujours passer par un etat DSBIT
+                    // car il y a TOUJOURS un bit start avant le prochain byte (donnees ou checksum)
                     ReportProgress(nCurSample);
                     nFrameStart = nCurSample + 1;
                     nBits = nVal = 0;
 
                     if (isLastByte) {
                         // Prochain byte sera le checksum, mais il faut d'abord lire son bit start
-                        ef = FSTATE_DSBIT_CHECKSUM;  // Nouvel état pour différencier
+                        ef = FSTATE_DSBIT_CHECKSUM;  // Nouvel etat pour differencier
                     }
                     else {
-                        // Plus de bytes de données à suivre
+                        // Plus de bytes de donnees a suivre
                         ef = FSTATE_DSBIT;
                     }
                 }
@@ -479,8 +479,8 @@ void SSDAnalyzer::WorkerThread()
                 {
                     U8 flags = 0;
 
-                    // Comparer le checksum reçu avec le checksum calculé
-                    // Le checksum calculé inclut SEULEMENT les données voitures (pas la commande)
+                    // Comparer le checksum recu avec le checksum calcule
+                    // Le checksum calcule inclut: 0xFF ⊕ Commande ⊕ Donnees voitures
                     if (nVal != mCalculatedChecksum) {
                         flags |= CHECKSUM_ERROR_FLAG;
                         mResults->AddMarker(nFrameStart, AnalyzerResults::ErrorX, mSettings->mInputChannel);
@@ -505,18 +505,18 @@ void SSDAnalyzer::WorkerThread()
 
         case FSTATE_PEBIT:
         {
-            // Bloc pour isoler la portée de la variable lookahead
-            // Après le checksum, chercher le gap entre paquets ou le début du prochain
+            // Bloc pour isoler la portee de la variable lookahead
+            // Apres le checksum, chercher le gap entre paquets ou le debut du prochain
             nTemp = nCurSample;
             UINT lookahead = LookaheadNextHBit(&nTemp);
 
             if (lookahead == 3) {
-                // Packet gap détecté - fin normale de paquet
+                // Packet gap detecte - fin normale de paquet
                 PostFrame(nFrameStart, nCurSample, FRAME_PEBIT, 0, 0, 0);
                 mResults->AddMarker(nFrameStart, AnalyzerResults::Stop, mSettings->mInputChannel);
                 ReportProgress(nCurSample);
 
-                // Avancer jusqu'à la fin du gap
+                // Avancer jusqu'a la fin du gap
                 while (LookaheadNextHBit(&nCurSample) == 3) {
                     GetNextHBit(&nCurSample);
                 }
@@ -527,14 +527,14 @@ void SSDAnalyzer::WorkerThread()
                 ef = FSTATE_INIT;
             }
             else if (lookahead == 1) {
-                // Début immédiat du prochain paquet (preamble)
+                // Debut immediat du prochain paquet (preamble)
                 PostFrame(nFrameStart, nCurSample, FRAME_PEBIT, 0, 0, 0);
                 mResults->AddMarker(nFrameStart, AnalyzerResults::Stop, mSettings->mInputChannel);
                 ReportProgress(nCurSample);
 
                 nFrameStart = nCurSample + 1;
                 nPreambleStart = nFrameStart;
-                nHBitCnt = 1; // On a déjà vu le premier bit '1' du préambule
+                nHBitCnt = 1; // On a deja vu le premier bit '1' du preambule
                 ef = FSTATE_INIT;
             }
             else {
