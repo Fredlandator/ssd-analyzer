@@ -10,6 +10,7 @@ SSDAnalyzer::SSDAnalyzer()
     mSimulationInitilized(false)
 {
     SetAnalyzerSettings(mSettings.get());
+    UseFrameV2();
 }
 
 SSDAnalyzer::~SSDAnalyzer()
